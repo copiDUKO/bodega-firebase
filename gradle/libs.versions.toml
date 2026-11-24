@@ -11,6 +11,8 @@ lifecycleLivedata = "2.6.2"
 securityCrypto = "1.1.0"
 zxingEmbedded = "4.3.0"
 robolectric = "4.17"
+googleServices = "4.6.0"
+firebaseBom = "35.2.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -24,7 +26,10 @@ lifecycle-livedata = { group = "androidx.lifecycle", name = "lifecycle-livedata"
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 zxing-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingEmbedded" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-database = { group = "com.google.firebase", name = "firebase-database" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 

@@ -11,10 +11,13 @@ import android.widget.TextView;
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.android.sistemabodegaappandroid.firebase.FirebaseRepository;
 import com.android.sistemabodegaappandroid.session.SessionManager;
+import com.android.sistemabodegaappandroid.ui.InformesActivity;
+import com.android.sistemabodegaappandroid.ui.UbicacionEmpresaActivity;
+import com.android.sistemabodegaappandroid.ui.admin.UserRoleAdminActivity;
 import com.android.sistemabodegaappandroid.util.EdgeToEdgeInsets;
 import com.android.sistemabodegaappandroid.util.Permisos;
-import com.android.sistemabodegaappandroid.ui.admin.UserRoleAdminActivity;
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -104,6 +107,11 @@ public class MainActivity extends AppCompatActivity {
         aplicarFeedbackTactil(btnAdminInformes);
         aplicarFeedbackTactil(btnUbicacionEmpresa);
         animarEntradaTarjetas();
+
+        // PRUEBA TEMPORAL Firebase (actividad 3.1): set() y update()
+        FirebaseRepository repo = new FirebaseRepository();
+        repo.escribirUsuario("user123", "Administrador", "admin@bodega.cl", "https://ejemplo.com/foto.png");
+        repo.escribirProducto("user123", "SKU-001", "Tornillo 5mm", 100, 150);
     }
 
     /** Muestra u oculta un acceso del panel según los permisos del rol. */
@@ -118,9 +126,9 @@ public class MainActivity extends AppCompatActivity {
         btnAdminProveedores.setOnClickListener(v ->
                 startActivity(new Intent(MainActivity.this, ProveedoresActivity.class)));
         btnAdminInformes.setOnClickListener(v ->
-                startActivity(new Intent(MainActivity.this, com.android.sistemabodegaappandroid.ui.InformesActivity.class)));
+                startActivity(new Intent(MainActivity.this, InformesActivity.class)));
         btnUbicacionEmpresa.setOnClickListener(v ->
-                startActivity(new Intent(MainActivity.this, com.android.sistemabodegaappandroid.ui.UbicacionEmpresaActivity.class)));
+                startActivity(new Intent(MainActivity.this, UbicacionEmpresaActivity.class)));
     }
 
     /**

@@ -1,0 +1,283 @@
+<resources>
+    <string name="app_name">Sistema Bodega</string>
+    <string name="title_login">Iniciar Sesión</string>
+    <string name="subtitle_login">Ingrese sus credenciales para acceder</string>
+    <string name="hint_username">Nombre de usuario</string>
+    <string name="hint_password">Contraseña</string>
+    <string name="btn_login">Iniciar Sesión</string>
+    <string name="login_verificando">Verificando…</string>
+    <string name="default_credentials_notice">Usuario inicial: admin · Contraseña: admin (cámbiela al entrar)</string>
+    <string name="error_empty_fields">Por favor, ingrese el usuario y la contraseña.</string>
+    <string name="error_inactive_user">Usuario deshabilitado. Contacte al administrador</string>
+    <string name="error_credenciales">Credenciales inválidas</string>
+    <!-- Pantalla de inicio de sesión: marca, guía del formulario y cuenta de
+         prueba. Los datos de la tarjeta salen del seed real (DatabaseHelper),
+         no de credenciales inventadas: hoy el seed crea una sola cuenta. -->
+    <string name="login_titulo">Bodega Express</string>
+    <string name="login_subtitulo">Ingresa tu cuenta para organizar productos, entradas y salidas de la bodega</string>
+    <string name="login_ayuda_usuario">Pide tu usuario al administrador</string>
+    <string name="login_ayuda_password">Distingue mayúsculas y minúsculas</string>
+    <string name="login_ayuda_demo">Usuarios de prueba: admin / admin · Crea más cuentas en Usuarios y Roles</string>
+
+    <string name="error_username_duplicado">El nombre de usuario ya se encuentra registrado</string>
+    <string name="msg_usuario_registrado">Usuario registrado exitosamente</string>
+    <string name="msg_categoria_duplicada">Ya existe una categoría registrada con ese nombre</string>
+    <string name="msg_categoria_nombre_vacio">El nombre no puede estar vacío</string>
+    <string name="msg_categoria_registrada">Categoría registrada correctamente</string>
+    <string name="dialog_title_registrar_categoria">Registrar Categoría</string>
+    <string name="msg_rol_invalido">Seleccione un rol válido</string>
+    <string name="msg_error_registrar_usuario">Error al registrar el usuario</string>
+    <string name="msg_campos_obligatorios">Todos los campos son obligatorios</string>
+    <string name="msg_roles_requeridos">Debe registrar al menos un rol antes de crear usuarios</string>
+    <string name="msg_estado_usuario_actualizado">Estado del usuario actualizado</string>
+    <string name="msg_error_actualizar_estado">Error al actualizar estado</string>
+    <string name="msg_sesion_iniciada">Sesión iniciada correctamente</string>
+
+    <string name="title_main">Panel Principal</string>
+    <string name="welcome_user">¡Bienvenido!</string>
+    <string name="btn_logout">Cerrar Sesión</string>
+    <string name="logout_confirmation">¿Está seguro de que desea cerrar sesión?</string>
+    <string name="yes">Sí</string>
+    <string name="no">No</string>
+
+    <string name="title_admin_users_roles">Gestión de Usuarios y Roles</string>
+    <string name="tab_users">Usuarios</string>
+    <string name="tab_roles">Roles</string>
+    <string name="add_role">Agregar Rol</string>
+    <string name="add_user">Agregar Usuario</string>
+    <string name="hint_nombre_rol">Nombre del Rol</string>
+    <string name="hint_descripcion_rol">Descripción</string>
+    <string name="hint_nombre_completo">Nombre Completo</string>
+    <string name="hint_select_role">Seleccione un Rol</string>
+    <string name="switch_activo">Usuario Activo</string>
+    <string name="save">Guardar</string>
+    <string name="aceptar">Aceptar</string>
+    <string name="cancel">Cancelar</string>
+
+    <!-- CU-10: Consultar y seleccionar categorías -->
+    <string name="title_categorias">Categorías</string>
+    <string name="subtitle_categorias">Solo se muestran las categorías habilitadas</string>
+    <string name="empty_categorias">Todavía no hay categorías activas registradas</string>
+    <string name="add_categoria">Agregar categoría</string>
+    <string name="categoria_activa">Categoría activa</string>
+
+    <!-- Accesos desde el panel principal: una tarjeta por módulo. El título va
+         arriba y la descripción explica en una línea qué hace el acceso; los
+         ids de los cuatro accesos los declara el layout del panel. -->
+    <string name="btn_admin_users_roles">Usuarios y Roles</string>
+    <string name="btn_admin_categorias">Gestión de Categorías</string>
+    <string name="btn_admin_productos">Gestión de Productos</string>
+    <string name="btn_admin_proveedores">Gestión de Proveedores</string>
+    <string name="menu_desc_usuarios">Crea cuentas y define qué puede hacer cada persona</string>
+    <string name="menu_desc_categorias">Organiza los productos por tipo</string>
+    <string name="menu_desc_productos">Registra, busca y revisa tu inventario</string>
+    <string name="menu_desc_proveedores">Administra quién surte tu bodega</string>
+
+    <!-- CU-11: listado y búsqueda de productos -->
+    <string name="title_productos">Productos</string>
+    <string name="subtitle_productos">Busque por nombre o SKU para localizar un producto</string>
+    <string name="hint_search_productos">Buscar por nombre o SKU</string>
+    <string name="empty_productos">Todavía no hay productos registrados</string>
+    <string name="empty_deshabilitados">No hay productos deshabilitados</string>
+    <string name="label_total_deshabilitados">Productos deshabilitados: %1$d</string>
+    <string name="add_producto">Agregar producto</string>
+    <string name="label_sku">SKU: %1$s</string>
+    <string name="label_categoria">Categoría: %1$s</string>
+    <string name="label_proveedor">Proveedor: %1$s</string>
+    <string name="label_precio_venta">Precio de venta: %1$s</string>
+    <string name="label_stock">Stock: %1$d</string>
+    <string name="sin_categoria">Sin categoría</string>
+    <string name="sin_proveedor">Sin proveedor</string>
+    <string name="stock_bajo">Stock bajo</string>
+    <string name="stock_agotado">Sin stock</string>
+    <string name="label_stock_unidad">%1$d %2$s</string>
+    <string name="hero_titulo">Inventario al día</string>
+    <string name="hero_caption">Cada producto registrado queda disponible para entradas, salidas e informes</string>
+    <string name="label_total_productos">Productos en catálogo: %1$d</string>
+
+    <string name="section_identificacion">Identificación del producto</string>
+    <string name="section_precios_stock">Precios y stock</string>
+    <string name="section_clasificacion">Clasificación</string>
+
+    <!-- Formulario de producto -->
+    <string name="title_producto_nuevo">Nuevo Producto</string>
+    <string name="title_producto_editar">Editar Producto</string>
+    <string name="hint_sku">SKU</string>
+    <string name="hint_codigo_barras">Código de barras (opcional)</string>
+    <string name="desc_escanear_codigo">Escanear el código con la cámara</string>
+    <string name="filter_tipo_todos">Todas las entradas y salidas</string>
+    <string name="filter_tipo_entrada">Solo entradas</string>
+    <string name="filter_tipo_salida">Solo salidas</string>
+    <string name="hint_nombre_producto">Nombre del producto</string>
+    <string name="hint_descripcion_producto">Descripción</string>
+    <string name="hint_precio_costo">Precio de costo</string>
+    <string name="hint_precio_venta">Precio de venta</string>
+    <string name="hint_stock_minimo">Stock mínimo</string>
+    <string name="hint_stock_inicial">Stock inicial</string>
+    <string name="hint_categoria">Categoría</string>
+    <string name="hint_proveedor">Proveedor</string>
+    <string name="hint_unidad_medida">Unidad de medida</string>
+    <string name="msg_codigo_barras_duplicado">El código de barras ya está asociado a otro producto</string>
+
+    <string-array name="unidades_medida">
+        <item>unidad</item>
+        <item>kilogramo</item>
+        <item>gramo</item>
+        <item>litro</item>
+        <item>mililitro</item>
+        <item>metro</item>
+        <item>caja</item>
+        <item>paquete</item>
+    </string-array>
+    <string name="section_movimientos">Movimientos de stock</string>
+    <string name="btn_registrar_movimiento">Registrar movimiento</string>
+    <string name="btn_guardar_producto">Guardar producto</string>
+    <string name="sin_movimientos">Todavía no hay movimientos registrados</string>
+    <string name="linea_movimiento">%1$s · %2$s · %3$d · %4$s</string>
+    <!-- Historial de movimientos: la ENTRADA con proveedor muestra la razón social
+         (el 5° argumento ya viene etiquetado con label_proveedor). -->
+    <string name="linea_movimiento_proveedor">%1$s · %2$s · %3$d · %4$s · %5$s</string>
+
+    <!-- Diálogo de movimiento de stock -->
+    <string name="dialog_movimiento_titulo">Movimiento de stock</string>
+    <string name="hint_tipo_movimiento">Tipo de movimiento</string>
+    <string name="tipo_entrada">Entrada</string>
+    <string name="tipo_salida">Salida</string>
+    <string name="hint_cantidad_movimiento">Cantidad</string>
+    <!-- v8 (CU-04 / CU-05): el documento respalda el movimiento y el motivo
+         explica por qué se movió el stock. -->
+    <string name="hint_documento_movimiento">N° documento / guía (opcional)</string>
+    <string name="hint_motivo_movimiento">Motivo / destinatario / observación</string>
+    <string name="btn_confirmar_movimiento">Registrar</string>
+
+    <!-- Mensajes de producto -->
+    <string name="msg_producto_guardado">Producto guardado correctamente</string>
+    <string name="msg_sku_duplicado">El SKU ya existe</string>
+    <!-- El SKU se genera solo cuando el usuario deja el campo vacío. -->
+    <string name="msg_sku_generado">SKU generado automáticamente: %1$s</string>
+    <string name="msg_valores_invalidos">Los precios y el stock no pueden ser negativos</string>
+    <string name="msg_categoria_requerida">Registre una categoría antes de crear productos</string>
+    <string name="msg_producto_no_encontrado">El producto ya no está disponible</string>
+    <string name="msg_producto_error">No se pudo guardar el producto</string>
+    <string name="msg_cantidad_invalida">Ingrese una cantidad mayor que cero</string>
+    <string name="msg_movimiento_ok">Movimiento de stock registrado</string>
+    <string name="msg_movimiento_error">No se pudo registrar el movimiento: revise la cantidad</string>
+    <string name="msg_stock_insuficiente">Stock insuficiente. Disponible: %1$d</string>
+    <string name="msg_motivo_requerido">Indique el motivo de la salida</string>
+    <!-- El movimiento queda auditado con el usuario de la sesión; si la sesión
+         no tiene usuario (por ejemplo, una sesión vieja sin username) se usa
+         esta etiqueta en vez de dejar el campo vacío. -->
+    <string name="usuario_sin_sesion">Operador</string>
+
+    <!-- Listado: acciones sobre un producto y filtro de deshabilitados -->
+    <string name="titulo_opciones_producto">Opciones: %1$s</string>
+    <string name="opcion_registrar_movimiento">Registrar entrada o salida</string>
+    <string name="opcion_editar_producto">Editar producto</string>
+    <string name="label_ver_deshabilitados">Ver deshabilitados</string>
+    <string name="msg_mostrando_deshabilitados">Mostrando productos deshabilitados</string>
+    <string name="msg_mostrando_activos">Mostrando productos activos</string>
+
+    <!-- CU-12: proveedores -->
+    <string name="title_proveedores">Proveedores</string>
+    <string name="subtitle_proveedores">Proveedores habilitados para compras y recepciones</string>
+    <string name="empty_proveedores">Todavía no hay proveedores registrados</string>
+    <string name="add_proveedor">Agregar proveedor</string>
+    <string name="hint_razon_social">Razón social</string>
+    <string name="hint_rut">RUT</string>
+    <string name="hint_email">Email</string>
+    <string name="hint_telefono">Teléfono</string>
+    <string name="hint_direccion">Dirección</string>
+    <string name="title_proveedor_nuevo">Nuevo Proveedor</string>
+    <string name="title_proveedor_editar">Editar Proveedor</string>
+    <string name="btn_guardar_proveedor">Guardar proveedor</string>
+    <string name="btn_deshabilitar">Deshabilitar</string>
+    <string name="confirmar_deshabilitar">El proveedor dejará de aparecer en los listados. ¿Desea continuar?</string>
+    <string name="msg_proveedor_guardado">Proveedor guardado correctamente</string>
+    <string name="msg_rut_duplicado">El RUT ya existe</string>
+    <string name="msg_razon_rut_requeridos">La razón social y el RUT no pueden estar vacíos</string>
+    <!-- CU-12: el contrato exige razón social Y número de contacto. -->
+    <string name="msg_telefono_requerido">Falta el número de contacto: el teléfono del proveedor es obligatorio</string>
+    <string name="msg_proveedor_deshabilitado">Proveedor deshabilitado</string>
+    <string name="msg_proveedor_error">No se pudo guardar el proveedor</string>
+
+    <!-- RF-08: baja lógica de productos. El id se declara aquí porque el botón
+         se construye en código: el layout del formulario no debe modificarse
+         para sumar la acción. -->
+    <item name="btnDeshabilitarProducto" type="id" />
+    <string name="btn_deshabilitar_producto">Deshabilitar producto</string>
+    <string name="title_deshabilitar_producto">Deshabilitar producto</string>
+    <string name="confirmar_deshabilitar_producto">El producto dejará de aparecer en los listados y no aceptará nuevas operaciones. Su historial de movimientos se conserva. ¿Desea continuar?</string>
+    <string name="msg_producto_deshabilitado">Producto deshabilitado</string>
+
+    <!-- Asociación de proveedor a los movimientos de entrada -->
+    <string name="hint_proveedor_movimiento">Proveedor de la entrada</string>
+
+    <!-- Guard de la administración: el rol se reconsulta en la base, la
+         preferencia de sesión es solo copia y no autoriza. -->
+    <string name="msg_acceso_admin_denegado">Su usuario no tiene permiso de Administrador para usar la administración de usuarios y roles</string>
+    <!-- Guard de los módulos: el rol solo abre lo que tiene habilitado. -->
+    <string name="msg_acceso_modulo_denegado">Su rol no tiene habilitado este módulo</string>
+
+    <!-- CU-06 / RF-19 / RF-22 / RF-21: Informes de Stock e Historial -->
+    <string name="title_informes">Informes y Reportes</string>
+    <string name="subtitle_informes">Estado actualizado de inventario y movimientos</string>
+    <string name="btn_admin_informes">Informes de Stock</string>
+    <string name="menu_desc_informes">Consulta existencias, productos críticos e historial</string>
+    <string name="tab_informe_stock">Informe de Stock</string>
+    <string name="tab_historial_movimientos">Historial de Movimientos</string>
+    <string name="filter_categoria_todas">Todas las categorías</string>
+    <string name="filter_estado_todos">Todos los estados</string>
+    <string name="filter_estado_ok">Disponible (OK)</string>
+    <string name="filter_estado_bajo">Stock Bajo / Crítico</string>
+    <string name="filter_estado_sin_stock">Sin Stock</string>
+    <string name="stat_total_productos">Productos</string>
+    <string name="stat_stock_total">Stock Total</string>
+    <string name="stat_stock_bajo">Stock Bajo</string>
+    <string name="stat_sin_stock">Sin Stock</string>
+    <string name="btn_exportar_informe">Exportar Informe</string>
+    <string name="empty_informes">No existen productos para los filtros seleccionados</string>
+    <string name="empty_historial_general">No se encontraron movimientos registrados</string>
+    <string name="reporte_exportado_titulo">Informe Generado</string>
+    <string name="reporte_exportado_mensaje">El informe de stock ha sido generado correctamente.</string>
+
+    <!-- CU-07 / RF-20: Búsqueda por Código de Barras -->
+    <string name="hint_codigo_manual">Código de barras manual</string>
+    <string name="title_escaneo_codigo">Escáner Código de Barras</string>
+    <string name="hint_escaneo_instruccion">Enfoque el código de barras con la cámara</string>
+    <string name="btn_buscar_codigo">Escanear código</string>
+    <string name="msg_permiso_camara_denegado">Permiso de cámara denegado. Se habilita la búsqueda manual.</string>
+    <string name="msg_codigo_no_encontrado">Producto no encontrado para el código de barras escaneado</string>
+    <string name="msg_producto_inactivo_escaneado">El producto escaneado está deshabilitado</string>
+    <string name="dialog_title_producto_escaneado">Producto Encontrado</string>
+    <string name="btn_registrar_entrada">Registrar Entrada</string>
+    <string name="btn_registrar_salida">Registrar Salida</string>
+    <string name="btn_ver_detalle">Ver Detalle</string>
+
+    <!-- CU-08 / RF-24: Ubicación de la Empresa -->
+    <string name="title_ubicacion_empresa">Ubicación de la Empresa</string>
+    <string name="subtitle_ubicacion_empresa">Localización de Bodega Central</string>
+    <string name="btn_ubicacion_empresa">Ubicación de la Empresa</string>
+    <string name="menu_desc_ubicacion">Ver ubicación fija y ruta en Google Maps</string>
+    <string name="empresa_nombre">Bodega Central Express</string>
+    <string name="empresa_direccion">Av. Providencia 1234, Santiago, Chile</string>
+    <string name="empresa_contacto">Teléfono: +56 2 2999 8888 · Email: contacto@bodegaexpress.cl</string>
+    <string name="empresa_horario">Horario: Lunes a Viernes de 08:30 a 18:30 hrs.</string>
+    <string name="empresa_direccion_corta">Bodega Central Express · Benjamín Vicuña Mackenna 697, Ovalle</string>
+    <string name="desc_mapa_empresa">Mapa con la ubicación del local</string>
+    <string name="btn_abrir_google_maps">Abrir en Google Maps</string>
+    <string name="btn_como_llegar">Cómo llegar</string>
+    <string name="msg_permiso_ubicacion_denegado">Permiso de ubicación no otorgado. Se mantiene visible la ubicación fija de la empresa.</string>
+    <string name="msg_maps_no_disponible">No se pudo abrir la aplicación de mapas</string>
+    <string name="dialog_title_editar_categoria">Editar categoría</string>
+    <string name="msg_categoria_actualizada">Categoría actualizada</string>
+    <string name="categoria_desactivar">Desactivar</string>
+    <string name="dialog_title_desactivar_categoria">Desactivar categoría</string>
+    <string name="msg_desactivar_categoria">¿Desactivar «%1$s»? Dejará de aparecer al crear productos, pero los que ya la usan no cambian.</string>
+    <string name="msg_categoria_desactivada">Categoría desactivada</string>
+    <string name="msg_no_puedes_cambiarte_el_rol">No puedes cambiarte el rol a ti mismo: el sistema quedaría sin administrador.</string>
+    <string name="msg_no_puedes_eliminarte">No puedes eliminar tu propia cuenta.</string>
+    <string name="msg_ultimo_admin_protegido">Es el único administrador activo. Asigna el rol a otra persona antes de cambiarlo o eliminarlo.</string>
+    <string name="msg_no_puedes_quitarte_usuarios">No puedes quitarle el permiso de usuarios a tu propio rol sin otro administrador activo.</string>
+    <string name="msg_no_puedes_borrar_tu_rol">No puedes eliminar el rol con el que estás trabajando.</string>
+    <string name="aviso_cuenta_propia">Tu propia cuenta: no puedes cambiar tu rol ni desactivarla.</string>
+</resources>

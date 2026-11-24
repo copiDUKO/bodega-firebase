@@ -1,0 +1,1224 @@
+package com.android.sistemabodegaappandroid.db;
+
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.SQLException;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
+
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.MutableLiveData;
+
+import com.android.sistemabodegaappandroid.model.Categoria;
+import com.android.sistemabodegaappandroid.model.Producto;
+import com.android.sistemabodegaappandroid.model.Proveedor;
+import com.android.sistemabodegaappandroid.model.Rol;
+import com.android.sistemabodegaappandroid.model.Usuario;
+import com.android.sistemabodegaappandroid.util.PasswordUtils;
+import com.android.sistemabodegaappandroid.util.Permisos;
+
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class DatabaseHelper extends SQLiteOpenHelper {
+
+    private static final String DATABASE_NAME = "sistema_bodega.db";
+    /**
+     * Versión del esquema. Cada salto está documentado en {@link #onUpgrade}:
+     * v7 sumó índices y fechas ordenables; v8 suma el documento y el motivo de
+     * cada movimiento (CU-04 / CU-05).
+     */
+    private static final int DATABASE_VERSION = 9;
+
+    /** Etiqueta de los registros de log del helper (fallos de migración, etc.). */
+    private static final String TAG = "DatabaseHelper";
+
+    /**
+     * Hilo dedicado para las consultas reactivas de CU-10. Evita ejecutar el DAO
+     * de categorías en el hilo principal de la interfaz.
+     */
+    private static final ExecutorService categoriaExecutor = Executors.newSingleThreadExecutor();
+
+    /** LiveData de categorías activas (CU-10). Se crea una sola vez por helper. */
+    private MutableLiveData<List<Categoria>> categoriasActivas;
+
+    // Tabla ROL
+    public static final String TABLE_ROL = "ROL";
+    public static final String COLUMN_ROL_ID = "id_rol";
+    public static final String COLUMN_ROL_NOMBRE = "nombre_rol";
+    public static final String COLUMN_ROL_DESCRIPCION = "descripcion";
+    public static final String COLUMN_ROL_PERMISOS = "permisos";
+
+    // Tabla USUARIO
+    public static final String TABLE_USUARIO = "USUARIO";
+    public static final String COLUMN_USUARIO_ID = "id_usuario";
+    public static final String COLUMN_USUARIO_USERNAME = "username";
+    public static final String COLUMN_USUARIO_NOMBRE_COMPLETO = "nombre_completo";
+    public static final String COLUMN_USUARIO_PASSWORD_HASH = "password_hash";
+    public static final String COLUMN_USUARIO_ID_ROL = "id_rol";
+    public static final String COLUMN_USUARIO_ACTIVO = "activo";
+
+    // Tabla CATEGORIA (CU-09)
+    public static final String TABLE_CATEGORIA = "CATEGORIA";
+    public static final String COLUMN_CAT_ID = "id_categoria";
+    public static final String COLUMN_CAT_NOMBRE = "nombre_categoria";
+    public static final String COLUMN_CAT_DESCRIPCION = "descripcion";
+    public static final String COLUMN_CAT_ACTIVO = "activo";
+
+    // Tabla PROVEEDOR (CU-11)
+    public static final String TABLE_PROVEEDOR = "PROVEEDOR";
+    public static final String COLUMN_PROV_ID = "id_proveedor";
+    public static final String COLUMN_PROV_RAZON_SOCIAL = "razon_social";
+    public static final String COLUMN_PROV_RUT = "rut";
+    public static final String COLUMN_PROV_EMAIL = "email";
+    public static final String COLUMN_PROV_TELEFONO = "telefono";
+    public static final String COLUMN_PROV_DIRECCION = "direccion";
+    public static final String COLUMN_PROV_ACTIVO = "activo";
+
+    // Tabla PRODUCTO (CU-11)
+    public static final String TABLE_PRODUCTO = "PRODUCTO";
+    public static final String COLUMN_PROD_ID = "id_producto";
+    public static final String COLUMN_PROD_SKU = "sku_codigo";
+    public static final String COLUMN_PROD_NOMBRE = "nombre";
+    public static final String COLUMN_PROD_DESCRIPCION = "descripcion";
+    public static final String COLUMN_PROD_PRECIO_COSTO = "precio_costo";
+    public static final String COLUMN_PROD_PRECIO_VENTA = "precio_venta";
+    public static final String COLUMN_PROD_STOCK_ACTUAL = "stock_actual";
+    public static final String COLUMN_PROD_STOCK_MINIMO = "stock_minimo";
+    public static final String COLUMN_PROD_ID_CATEGORIA = "id_categoria";
+    public static final String COLUMN_PROD_ID_PROVEEDOR = "id_proveedor";
+    public static final String COLUMN_PROD_ACTIVO = "activo";
+    // CU-03: el código de barras es único cuando se informa; la UNIQUE de
+    // SQLite admite varios NULL, así que "sin código" puede repetirse.
+    public static final String COLUMN_PROD_CODIGO_BARRAS = "codigo_barras";
+    // RF-03: la unidad de medida acompaña al alta del producto.
+    public static final String COLUMN_PROD_UNIDAD_MEDIDA = "unidad_medida";
+
+    // Tabla MOVIMIENTO (CU-12)
+    public static final String TABLE_MOVIMIENTO = "MOVIMIENTO";
+    public static final String COLUMN_MOV_ID = "id_movimiento";
+    public static final String COLUMN_MOV_ID_PRODUCTO = "id_producto";
+    public static final String COLUMN_MOV_TIPO = "tipo";
+    public static final String COLUMN_MOV_CANTIDAD = "cantidad";
+    public static final String COLUMN_MOV_USUARIO = "usuario";
+    public static final String COLUMN_MOV_FECHA = "fecha";
+    // En v4 la entrada de stock deja constancia del proveedor que entregó la
+    // mercancía. Es nullable porque las salidas y las entradas sin proveedor no
+    // tienen uno, y sin clave foránea a propósito: el proveedor histórico no
+    // debe bloquear un movimiento viejo si luego se deshabilita o se borra.
+    public static final String COLUMN_MOV_ID_PROVEEDOR = "id_proveedor";
+    // v8: constancia documental del movimiento. El documento (número de guía,
+    // factura o vale) y el motivo describen POR QUÉ se movió el stock; son
+    // nullable porque una entrada sin documento sigue siendo válida, y las
+    // filas anteriores a la v8 quedan en NULL.
+    public static final String COLUMN_MOV_DOCUMENTO = "documento";
+    public static final String COLUMN_MOV_MOTIVO = "motivo";
+
+    /**
+     * SQL de creación de las tres tablas del módulo de inventario.
+     * Se centraliza aquí para que onCreate y onUpgrade usen la misma definición
+     * y no existan dos variantes del esquema que puedan divergir.
+     */
+    private static final String[] SQL_TABLAS_INVENTARIO = {
+            "CREATE TABLE IF NOT EXISTS " + TABLE_PROVEEDOR + " ("
+                    + COLUMN_PROV_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + COLUMN_PROV_RAZON_SOCIAL + " TEXT NOT NULL, "
+                    + COLUMN_PROV_RUT + " TEXT NOT NULL UNIQUE, "
+                    + COLUMN_PROV_EMAIL + " TEXT, "
+                    + COLUMN_PROV_TELEFONO + " TEXT, "
+                    + COLUMN_PROV_DIRECCION + " TEXT, "
+                    + COLUMN_PROV_ACTIVO + " INTEGER NOT NULL DEFAULT 1"
+                    + ");",
+            "CREATE TABLE IF NOT EXISTS " + TABLE_PRODUCTO + " ("
+                    + COLUMN_PROD_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + COLUMN_PROD_SKU + " TEXT NOT NULL UNIQUE, "
+                    + COLUMN_PROD_CODIGO_BARRAS + " TEXT UNIQUE, "
+                    + COLUMN_PROD_UNIDAD_MEDIDA + " TEXT, "
+                    + COLUMN_PROD_NOMBRE + " TEXT NOT NULL, "
+                    + COLUMN_PROD_DESCRIPCION + " TEXT, "
+                    + COLUMN_PROD_PRECIO_COSTO + " REAL NOT NULL DEFAULT 0, "
+                    + COLUMN_PROD_PRECIO_VENTA + " REAL NOT NULL DEFAULT 0, "
+                    + COLUMN_PROD_STOCK_ACTUAL + " INTEGER NOT NULL DEFAULT 0, "
+                    + COLUMN_PROD_STOCK_MINIMO + " INTEGER NOT NULL DEFAULT 0, "
+                    + COLUMN_PROD_ID_CATEGORIA + " INTEGER NOT NULL, "
+                    + COLUMN_PROD_ID_PROVEEDOR + " INTEGER, "
+                    + COLUMN_PROD_ACTIVO + " INTEGER NOT NULL DEFAULT 1, "
+                    + "FOREIGN KEY (" + COLUMN_PROD_ID_CATEGORIA + ") REFERENCES " + TABLE_CATEGORIA + "(" + COLUMN_CAT_ID + "), "
+                    + "FOREIGN KEY (" + COLUMN_PROD_ID_PROVEEDOR + ") REFERENCES " + TABLE_PROVEEDOR + "(" + COLUMN_PROV_ID + ")"
+                    + ");",
+            "CREATE TABLE IF NOT EXISTS " + TABLE_MOVIMIENTO + " ("
+                    + COLUMN_MOV_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + COLUMN_MOV_ID_PRODUCTO + " INTEGER NOT NULL, "
+                    + COLUMN_MOV_TIPO + " TEXT NOT NULL, "
+                    + COLUMN_MOV_CANTIDAD + " INTEGER NOT NULL, "
+                    + COLUMN_MOV_USUARIO + " TEXT, "
+                    + COLUMN_MOV_FECHA + " TEXT NOT NULL, "
+                    + COLUMN_MOV_ID_PROVEEDOR + " INTEGER, "
+                    + COLUMN_MOV_DOCUMENTO + " TEXT, "
+                    + COLUMN_MOV_MOTIVO + " TEXT, "
+                    + "FOREIGN KEY (" + COLUMN_MOV_ID_PRODUCTO + ") REFERENCES " + TABLE_PRODUCTO + "(" + COLUMN_PROD_ID + ")"
+                    + ");"
+    };
+
+    /**
+     * Índices del módulo de inventario (#8). Se ejecutan en onCreate y en
+     * onUpgrade con IF NOT EXISTS, así que son idempotentes y un reintento de la
+     * migración no falla: el SKU y el código de barras se buscan en cada alta y
+     * el historial siempre filtra MOVIMIENTO por id_producto.
+     */
+    private static final String[] SQL_INDICES = {
+            "CREATE INDEX IF NOT EXISTS idx_producto_sku ON " + TABLE_PRODUCTO
+                    + "(" + COLUMN_PROD_SKU + ");",
+            "CREATE INDEX IF NOT EXISTS idx_producto_barras ON " + TABLE_PRODUCTO
+                    + "(" + COLUMN_PROD_CODIGO_BARRAS + ");",
+            "CREATE INDEX IF NOT EXISTS idx_movimiento_producto ON " + TABLE_MOVIMIENTO
+                    + "(" + COLUMN_MOV_ID_PRODUCTO + ");"
+    };
+
+    /**
+     * Formato canónico de MOVIMIENTO.fecha para la migración v7: es el mismo que
+     * escribe {@link ProductoDao}, de modo que ambos lados no pueden divergir.
+     */
+    private static final String FORMATO_FECHA_ORDENABLE = ProductoDao.FORMATO_FECHA;
+
+    /**
+     * Locales con los que una instalación vieja pudo haber escrito la fecha:
+     * antes se usaba {@code Locale.getDefault()}, y en árabe, persa, tailandés o
+     * hindi eso produce dígitos no ASCII (o un año no gregoriano) que rompen el
+     * ORDER BY lexicográfico del historial. El patrón era el mismo; lo que
+     * cambiaba era el idioma del equipo.
+     */
+    private static final Locale[] LOCALES_LEGACY = {
+            Locale.forLanguageTag("ar"),
+            Locale.forLanguageTag("fa"),
+            Locale.forLanguageTag("th-TH-u-nu-thai"),
+            Locale.forLanguageTag("hi-IN-u-nu-deva")
+    };
+
+    public DatabaseHelper(Context context) {
+        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+    }
+
+    /**
+     * Activa las claves foráneas en cada conexión que abre SQLite.
+     * Sin esto, Android las deja deshabilitadas por defecto y las referencias
+     * a CATEGORIA/PROVEEDOR/PRODUCTO no se validarían en tiempo de escritura.
+     */
+    @Override
+    public void onConfigure(SQLiteDatabase db) {
+        super.onConfigure(db);
+        db.setForeignKeyConstraintsEnabled(true);
+    }
+
+    @Override
+    public void onCreate(SQLiteDatabase db) {
+        // Habilitar claves foráneas
+        db.execSQL("PRAGMA foreign_keys=ON;");
+
+        // Crear tabla ROL
+        String CREATE_ROL_TABLE = "CREATE TABLE " + TABLE_ROL + " ("
+                + COLUMN_ROL_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COLUMN_ROL_NOMBRE + " TEXT UNIQUE NOT NULL, "
+                + COLUMN_ROL_DESCRIPCION + " TEXT, "
+                + COLUMN_ROL_PERMISOS + " TEXT"
+                + ");";
+        db.execSQL(CREATE_ROL_TABLE);
+
+        // Crear tabla USUARIO
+        String CREATE_USUARIO_TABLE = "CREATE TABLE " + TABLE_USUARIO + " ("
+                + COLUMN_USUARIO_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COLUMN_USUARIO_USERNAME + " TEXT UNIQUE NOT NULL, "
+                + COLUMN_USUARIO_NOMBRE_COMPLETO + " TEXT NOT NULL, "
+                + COLUMN_USUARIO_PASSWORD_HASH + " TEXT NOT NULL, "
+                + COLUMN_USUARIO_ID_ROL + " INTEGER NOT NULL, "
+                + COLUMN_USUARIO_ACTIVO + " INTEGER NOT NULL DEFAULT 1, "
+                + "FOREIGN KEY (" + COLUMN_USUARIO_ID_ROL + ") REFERENCES " + TABLE_ROL + "(" + COLUMN_ROL_ID + ")"
+                + ");";
+        db.execSQL(CREATE_USUARIO_TABLE);
+
+        // Crear tabla CATEGORIA (CU-09)
+        String CREATE_CATEGORIA_TABLE = "CREATE TABLE " + TABLE_CATEGORIA + " ("
+                + COLUMN_CAT_ID + " INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + COLUMN_CAT_NOMBRE + " TEXT UNIQUE NOT NULL, "
+                + COLUMN_CAT_DESCRIPCION + " TEXT, "
+                + COLUMN_CAT_ACTIVO + " INTEGER NOT NULL DEFAULT 1"
+                + ");";
+        db.execSQL(CREATE_CATEGORIA_TABLE);
+
+        // Crear tablas del módulo de inventario (CU-11 / CU-12).
+        // En una instalación limpia el esquema completo se arma desde cero,
+        // por eso estas tablas se crean aquí además de en la migración.
+        for (String sqlInventario : SQL_TABLAS_INVENTARIO) {
+            db.execSQL(sqlInventario);
+        }
+
+        // #8: los índices acompañan al esquema desde el día uno.
+        crearIndices(db);
+
+        // Insertar roles iniciales de prueba
+        insertInitialSeedData(db);
+    }
+
+    /**
+     * Migración incremental: cada salto de versión solo aplica los cambios
+     * que le corresponden, en orden. Antes aquí se hacía DROP TABLE de todo,
+     * lo que destruía usuarios y categorías al actualizar la app; esa es la
+     * falla que esta versión corrige: los datos existentes deben sobrevivir.
+     *
+     * Cada paso es idempotente: el DDL de tablas usa IF NOT EXISTS y cada
+     * ALTER TABLE consulta antes a PRAGMA table_info, así que un reintento
+     * (por un fallo previo o por una base ya alterada) no vuelve a ejecutar
+     * un paso aplicado ni revienta. Si algo falla igual, el error queda
+     * registrado con el paso exacto y se propaga: SQLiteOpenHelper revierte
+     * la transacción y la base conserva su versión anterior, en vez de quedar
+     * marcada como migrada con la columna ausente.
+     */
+    @Override
+    public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        if (oldVersion < 3) {
+            // v3 agrega el módulo de inventario: PROVEEDOR, PRODUCTO y MOVIMIENTO.
+            // CREATE TABLE IF NOT EXISTS hace la operación idempotente si alguna
+            // tabla llegara a existir previamente.
+            for (String sqlInventario : SQL_TABLAS_INVENTARIO) {
+                db.execSQL(sqlInventario);
+            }
+        }
+        if (oldVersion < 4) {
+            // v4 agrega el proveedor de la entrada al historial de movimientos.
+            // ALTER TABLE incremental: no se recrea la tabla porque eso
+            // destruiría los movimientos ya registrados.
+            agregarColumnaSiFalta(db, TABLE_MOVIMIENTO, COLUMN_MOV_ID_PROVEEDOR,
+                    "ALTER TABLE " + TABLE_MOVIMIENTO
+                            + " ADD COLUMN " + COLUMN_MOV_ID_PROVEEDOR + " INTEGER",
+                    "v4: MOVIMIENTO." + COLUMN_MOV_ID_PROVEEDOR);
+        }
+        if (oldVersion < 5) {
+            agregarColumnaSiFalta(db, TABLE_ROL, COLUMN_ROL_PERMISOS,
+                    "ALTER TABLE " + TABLE_ROL + " ADD COLUMN " + COLUMN_ROL_PERMISOS + " TEXT",
+                    "v5: ROL." + COLUMN_ROL_PERMISOS);
+            // La columna es la que autoriza desde esta version: si queda en NULL
+            // en los roles que ya existian, la instalacion actualizada queda sin
+            // acceso a ningun modulo, administrador incluido.
+            rellenarPermisosDeRolesExistentes(db);
+        }
+        if (oldVersion < 6) {
+            // v6: el alta de producto (CU-03) ahora registra código de barras y
+            // unidad de medida. Ambas columnas son opcionales: el código de
+            // barras es UNIQUE y varios NULL son válidos, así que un producto
+            // sin código sigue siendo legítimo; la unidad es texto plano.
+            agregarColumnaSiFalta(db, TABLE_PRODUCTO, COLUMN_PROD_CODIGO_BARRAS,
+                    "ALTER TABLE " + TABLE_PRODUCTO + " ADD COLUMN " + COLUMN_PROD_CODIGO_BARRAS + " TEXT",
+                    "v6: PRODUCTO." + COLUMN_PROD_CODIGO_BARRAS);
+            agregarColumnaSiFalta(db, TABLE_PRODUCTO, COLUMN_PROD_UNIDAD_MEDIDA,
+                    "ALTER TABLE " + TABLE_PRODUCTO + " ADD COLUMN " + COLUMN_PROD_UNIDAD_MEDIDA + " TEXT",
+                    "v6: PRODUCTO." + COLUMN_PROD_UNIDAD_MEDIDA);
+        }
+        if (oldVersion < 7) {
+            // v7: los índices y las fechas ordenables. El paso va DESPUÉS del v6
+            // a propósito: idx_producto_barras indexa codigo_barras, que solo
+            // existe cuando el paso anterior ya corrió.
+            crearIndices(db);
+            normalizarFechasDeMovimiento(db);
+        }
+        if (oldVersion < 8) {
+            // v8: documento y motivo en el historial (CU-04 / CU-05). Van con
+            // ALTER TABLE incremental y no con DROP: los movimientos ya
+            // registrados son la auditoría del inventario y no se pierden al
+            // actualizar la app. Ambas columnas son nullable, así que las filas
+            // viejas quedan legítimamente sin documento ni motivo.
+            agregarColumnaSiFalta(db, TABLE_MOVIMIENTO, COLUMN_MOV_DOCUMENTO,
+                    "ALTER TABLE " + TABLE_MOVIMIENTO
+                            + " ADD COLUMN " + COLUMN_MOV_DOCUMENTO + " TEXT",
+                    "v8: MOVIMIENTO." + COLUMN_MOV_DOCUMENTO);
+            agregarColumnaSiFalta(db, TABLE_MOVIMIENTO, COLUMN_MOV_MOTIVO,
+                    "ALTER TABLE " + TABLE_MOVIMIENTO
+                            + " ADD COLUMN " + COLUMN_MOV_MOTIVO + " TEXT",
+                    "v8: MOVIMIENTO." + COLUMN_MOV_MOTIVO);
+        }
+        if (oldVersion < 9) {
+            // v9: el módulo de informes (RF-19, RF-21, RF-22) llegó después de que
+            // ROL.permisos ya existía. Rellenar solo las filas vacías no alcanza:
+            // un rol que ya tenía sus cinco tokens nunca recibió INFORMES, así que
+            // el panel no mostraba el acceso y AccesoModulo rebotaba la pantalla.
+            // Se agrega a los roles que operan inventario (los que ya tienen
+            // MOVIMIENTOS), que es el mismo criterio de los roles nuevos.
+            agregarPermisoInformesARolesDeInventario(db);
+        }
+    }
+
+    /**
+     * Agrega el token INFORMES a los roles que ya tienen MOVIMIENTOS.
+     *
+     * Se apoya en {@link Permisos#tiene} para comparar tokens completos: buscar
+     * "INFORMES" como subcadena daría por habilitado un permiso que no está. Las
+     * filas sin permisos quedan como están, porque de eso se ocupa
+     * {@link #rellenarPermisosDeRolesExistentes} y un rol recién creado puede
+     * legítimamente no tener ninguno.
+     *
+     * @param db base con la columna ROL.permisos ya creada.
+     */
+    private void agregarPermisoInformesARolesDeInventario(SQLiteDatabase db) {
+        List<String[]> cambios = new ArrayList<>();
+        try (Cursor cursor = db.rawQuery(
+                "SELECT " + COLUMN_ROL_ID + ", " + COLUMN_ROL_PERMISOS + " FROM " + TABLE_ROL, null)) {
+            int indiceId = cursor.getColumnIndexOrThrow(COLUMN_ROL_ID);
+            int indicePermisos = cursor.getColumnIndexOrThrow(COLUMN_ROL_PERMISOS);
+            while (cursor.moveToNext()) {
+                String permisos = cursor.getString(indicePermisos);
+                if (Permisos.tiene(permisos, Permisos.MOVIMIENTOS)
+                        && !Permisos.tiene(permisos, Permisos.INFORMES)) {
+                    cambios.add(new String[]{
+                            String.valueOf(cursor.getInt(indiceId)),
+                            Permisos.agregar(permisos, Permisos.INFORMES)});
+                }
+            }
+        }
+        for (String[] cambio : cambios) {
+            ContentValues cv = new ContentValues();
+            cv.put(COLUMN_ROL_PERMISOS, cambio[1]);
+            db.update(TABLE_ROL, cv, COLUMN_ROL_ID + " = ?", new String[]{cambio[0]});
+        }
+        if (!cambios.isEmpty()) {
+            Log.i(TAG, "Paso de migracion v9: INFORMES agregado a " + cambios.size() + " rol(es)");
+        }
+    }
+
+    /**
+     * Repara una base marcada como migrada a la que le falta ROL.permisos.
+     *
+     * `onUpgrade` solo corre cuando la version guardada en el archivo es menor
+     * que {@link #DATABASE_VERSION}: una base que ya quedo marcada como v5 o
+     * superior sin la columna no se vuelve a migrar nunca, y el primer
+     * `SELECT permisos` de la sesion muere con «no such column: permisos» en el
+     * login. Paso cuando el numero de version subio en una copia del helper y el
+     * ALTER no lo acompano, o cuando un merge dejo el helper viejo encima del
+     * nuevo: la app se instala, la base queda marcada en la version nueva y la
+     * columna no existe.
+     *
+     * La comprobacion es un PRAGMA sobre metadatos, asi que abrir la app no
+     * cuesta nada cuando el esquema esta completo; el ALTER y el relleno solo
+     * corren en la base rota, que es justo la que hoy revienta.
+     */
+    @Override
+    public void onOpen(SQLiteDatabase db) {
+        super.onOpen(db);
+        repararPermisosDeRol(db);
+    }
+
+    /**
+     * Deja ROL.permisos y su relleno en una base que se declaro migrada sin
+     * tener la columna. Es idempotente: con la columna presente no hace nada y
+     * no pisa los permisos que el usuario ya definio.
+     */
+    private void repararPermisosDeRol(SQLiteDatabase db) {
+        if (columnaExisteEnTabla(db, TABLE_ROL, COLUMN_ROL_PERMISOS)) {
+            return;
+        }
+        Log.w(TAG, "La base quedo marcada como migrada sin " + TABLE_ROL + "."
+                + COLUMN_ROL_PERMISOS + "; se agrega la columna y se rellenan los roles");
+        agregarColumnaSiFalta(db, TABLE_ROL, COLUMN_ROL_PERMISOS,
+                "ALTER TABLE " + TABLE_ROL + " ADD COLUMN " + COLUMN_ROL_PERMISOS + " TEXT",
+                "reparacion: " + TABLE_ROL + "." + COLUMN_ROL_PERMISOS);
+        rellenarPermisosDeRolesExistentes(db);
+    }
+
+    /** Crea los índices del módulo; IF NOT EXISTS lo hace idempotente. */
+    private void crearIndices(SQLiteDatabase db) {
+        for (String sqlIndice : SQL_INDICES) {
+            db.execSQL(sqlIndice);
+        }
+    }
+
+    /**
+     * Reescribe MOVIMIENTO.fecha al formato ordenable ({@code yyyy-MM-dd
+     * HH:mm:ss}, UTC, dígitos ASCII).
+     *
+     * Antes la fecha se formateaba con {@code Locale.getDefault()}: en un equipo
+     * en árabe o tailandés la fila quedaba con dígitos no ASCII o con año
+     * budista y el ORDER BY del historial dejaba de ser cronológico. Como el
+     * patrón no cambió, la fila vieja se puede releer con el Locale que la
+     * escribió y reemitirla en el formato canónico; la hora no se convierte de zona
+     * porque la fila vieja era hora local sin zona registrada y el objetivo es
+     * que ordene, no reinterpretarla.
+     *
+     * Solo se tocan las filas que no están ya en el formato canónico y que
+     * parsean con alguno de los formatos conocidos; el resto se conserva con un
+     * aviso en el log, en vez de perder el dato. Cualquier fallo de escritura se
+     * registra y se propaga: SQLiteOpenHelper revierte la migración completa y
+     * la base conserva la versión anterior, sin quedar a medio convertir.
+     */
+    private void normalizarFechasDeMovimiento(SQLiteDatabase db) {
+        SimpleDateFormat canonico = nuevoFormateadorFechas(Locale.US);
+        List<SimpleDateFormat> candidatos = new ArrayList<>();
+        candidatos.add(nuevoFormateadorFechas(Locale.getDefault()));
+        for (Locale locale : LOCALES_LEGACY) {
+            candidatos.add(nuevoFormateadorFechas(locale));
+        }
+
+        List<String[]> cambios = new ArrayList<>();
+        try (Cursor cursor = db.rawQuery(
+                "SELECT " + COLUMN_MOV_ID + ", " + COLUMN_MOV_FECHA
+                        + " FROM " + TABLE_MOVIMIENTO, null)) {
+            int indiceId = cursor.getColumnIndexOrThrow(COLUMN_MOV_ID);
+            int indiceFecha = cursor.getColumnIndexOrThrow(COLUMN_MOV_FECHA);
+            while (cursor.moveToNext()) {
+                String fecha = cursor.getString(indiceFecha);
+                String normalizada = normalizarFecha(fecha, canonico, candidatos);
+                if (normalizada != null && !normalizada.equals(fecha)) {
+                    cambios.add(new String[]{String.valueOf(cursor.getInt(indiceId)), normalizada});
+                }
+            }
+        }
+
+        if (cambios.isEmpty()) {
+            return;
+        }
+        try {
+            for (String[] cambio : cambios) {
+                ContentValues cv = new ContentValues();
+                cv.put(COLUMN_MOV_FECHA, cambio[1]);
+                db.update(TABLE_MOVIMIENTO, cv,
+                        COLUMN_MOV_ID + " = ?", new String[]{cambio[0]});
+            }
+        } catch (SQLException e) {
+            Log.e(TAG, "Fallo el paso de migracion v7: normalizar "
+                    + TABLE_MOVIMIENTO + "." + COLUMN_MOV_FECHA, e);
+            throw e;
+        }
+    }
+
+    /**
+     * @return la fecha ya en el formato canónico, la misma cadena si ya lo
+     *         estaba, o null cuando no se reconoce ningún formato conocido
+     *         (en ese caso la fila se conserva tal cual).
+     */
+    private String normalizarFecha(String fecha, SimpleDateFormat canonico,
+                                   List<SimpleDateFormat> candidatos) {
+        if (fecha == null || fecha.trim().isEmpty()) {
+            return null;
+        }
+        String valor = fecha.trim();
+        Date canonica = parsearFecha(canonico, valor);
+        if (canonica != null && canonico.format(canonica).equals(valor)) {
+            // Ya está en el formato ordenable: no hay nada que reescribir.
+            return valor;
+        }
+        for (SimpleDateFormat candidato : candidatos) {
+            Date legacy = parsearFecha(candidato, valor);
+            if (legacy != null) {
+                return canonico.format(legacy);
+            }
+        }
+        Log.w(TAG, "Fecha de movimiento no reconocida, se conserva: " + valor);
+        return null;
+    }
+
+    /** Parsea sin leniencia: una fecha inventada no debe reescribirse. */
+    private Date parsearFecha(SimpleDateFormat formato, String valor) {
+        try {
+            return formato.parse(valor);
+        } catch (ParseException e) {
+            return null;
+        }
+    }
+
+    /** Formateador del historial: mismo patrón, UTC y sin leniencia. */
+    private SimpleDateFormat nuevoFormateadorFechas(Locale locale) {
+        SimpleDateFormat formato = new SimpleDateFormat(FORMATO_FECHA_ORDENABLE, locale);
+        formato.setTimeZone(TimeZone.getTimeZone("UTC"));
+        formato.setLenient(false);
+        return formato;
+    }
+
+    /**
+     * Rellena ROL.permisos en los roles creados antes de la v5.
+     *
+     * Replica el modelo de acceso de la version anterior, donde la administracion
+     * se decidia por el nombre del rol y el inventario lo veia cualquier rol:
+     * «Administrador» recibe los cinco modulos y el resto los de inventario. Solo
+     * se tocan las filas vacias, asi que una segunda ejecucion no pisa permisos
+     * que el usuario ya haya definido.
+     *
+     * @param db base en la que ya se agrego la columna.
+     */
+    private void rellenarPermisosDeRolesExistentes(SQLiteDatabase db) {
+        String todos = "USUARIOS,PRODUCTOS,CATEGORIAS,PROVEEDORES,MOVIMIENTOS,INFORMES";
+        String inventario = "PRODUCTOS,CATEGORIAS,PROVEEDORES,MOVIMIENTOS,INFORMES";
+        String sinPermisos = " AND (" + COLUMN_ROL_PERMISOS + " IS NULL"
+                + " OR TRIM(" + COLUMN_ROL_PERMISOS + ") = '')";
+        db.execSQL("UPDATE " + TABLE_ROL + " SET " + COLUMN_ROL_PERMISOS + " = ?"
+                + " WHERE UPPER(TRIM(" + COLUMN_ROL_NOMBRE + ")) = 'ADMINISTRADOR'" + sinPermisos,
+                new Object[]{todos});
+        db.execSQL("UPDATE " + TABLE_ROL + " SET " + COLUMN_ROL_PERMISOS + " = ?"
+                + " WHERE UPPER(TRIM(" + COLUMN_ROL_NOMBRE + ")) <> 'ADMINISTRADOR'" + sinPermisos,
+                new Object[]{inventario});
+    }
+
+    /** true si PRAGMA table_info muestra la columna en la tabla indicada. */
+    private boolean columnaExisteEnTabla(SQLiteDatabase db, String tabla, String columna) {
+        try (Cursor cursor = db.rawQuery("PRAGMA table_info(" + tabla + ")", null)) {
+            int indiceNombre = cursor.getColumnIndexOrThrow("name");
+            while (cursor.moveToNext()) {
+                if (columna.equalsIgnoreCase(cursor.getString(indiceNombre))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Aplica un ALTER TABLE solo si la columna todavía no existe, para que un
+     * paso repetido no falle y un reintento pueda retomar la migración donde
+     * quedó. Un fallo inesperado se registra con el nombre del paso y se
+     * propaga: no se deja la base a medias en silencio.
+     *
+     * @param paso identificador del paso de migración, usado en el log de error.
+     */
+    private void agregarColumnaSiFalta(SQLiteDatabase db, String tabla, String columna,
+                                       String alterTable, String paso) {
+        if (columnaExisteEnTabla(db, tabla, columna)) {
+            // Migración previamente aplicada o base ya alterada: nada que hacer.
+            return;
+        }
+        try {
+            db.execSQL(alterTable);
+        } catch (SQLException e) {
+            Log.e(TAG, "Fallo el paso de migracion " + paso
+                    + " sobre " + tabla + ": " + alterTable, e);
+            throw e;
+        }
+    }
+
+    private void insertInitialSeedData(SQLiteDatabase db) {
+        // Insertar roles por defecto
+        ContentValues cvAdminRol = new ContentValues();
+        cvAdminRol.put(COLUMN_ROL_NOMBRE, "Administrador");
+        cvAdminRol.put(COLUMN_ROL_DESCRIPCION, "Acceso total al sistema");
+        cvAdminRol.put(COLUMN_ROL_PERMISOS, "USUARIOS,PRODUCTOS,CATEGORIAS,PROVEEDORES,MOVIMIENTOS,INFORMES");
+        long adminRolId = db.insert(TABLE_ROL, null, cvAdminRol);
+
+        ContentValues cvOperadorRol = new ContentValues();
+        cvOperadorRol.put(COLUMN_ROL_NOMBRE, "Operador");
+        cvOperadorRol.put(COLUMN_ROL_DESCRIPCION, "Acceso a operaciones de bodega");
+        cvOperadorRol.put(COLUMN_ROL_PERMISOS, "PRODUCTOS,CATEGORIAS,PROVEEDORES,MOVIMIENTOS,INFORMES");
+        db.insert(TABLE_ROL, null, cvOperadorRol);
+
+        ContentValues cvVendedorRol = new ContentValues();
+        cvVendedorRol.put(COLUMN_ROL_NOMBRE, "Vendedor");
+        cvVendedorRol.put(COLUMN_ROL_DESCRIPCION, "Acceso a ventas y consultas");
+        cvVendedorRol.put(COLUMN_ROL_PERMISOS, "PRODUCTOS,CATEGORIAS");
+        db.insert(TABLE_ROL, null, cvVendedorRol);
+
+        // Insertar usuario administrador por defecto (admin / admin)
+        if (adminRolId != -1) {
+            ContentValues cvAdminUser = new ContentValues();
+            cvAdminUser.put(COLUMN_USUARIO_USERNAME, "admin");
+            cvAdminUser.put(COLUMN_USUARIO_NOMBRE_COMPLETO, "Administrador del Sistema");
+            cvAdminUser.put(COLUMN_USUARIO_PASSWORD_HASH, PasswordUtils.hashPassword("admin"));
+            cvAdminUser.put(COLUMN_USUARIO_ID_ROL, adminRolId);
+            cvAdminUser.put(COLUMN_USUARIO_ACTIVO, 1);
+            db.insert(TABLE_USUARIO, null, cvAdminUser);
+        }
+    }
+
+    // --- AUTENTICACIÓN Y SESIÓN (RF-01) ---
+
+    /**
+     * Busca a un usuario por username.
+     */
+    public Usuario getUsuarioByUsername(String username) {
+        return buscarUsuarioPor(COLUMN_USUARIO_USERNAME, username);
+    }
+
+    /**
+     * Busca a un usuario por su id.
+     *
+     * Existe para que el guard de la administración reconsulte el rol REAL en
+     * la base en vez de confiar en la preferencia de sesión: la preferencia es
+     * copia, no autoridad.
+     *
+     * @param idUsuario id del usuario a buscar.
+     * @return el usuario con su rol, o null si no existe.
+     */
+    public Usuario getUsuarioById(int idUsuario) {
+        return buscarUsuarioPor(COLUMN_USUARIO_ID, String.valueOf(idUsuario));
+    }
+
+    /**
+     * Permisos declarados por un rol, tal cual están guardados en ROL.permisos.
+     *
+     * Es la autoridad para decidir el acceso a los módulos (RF-27). La columna
+     * se guarda desde los casilleros del diálogo de roles y hasta ahora ninguna
+     * clase la consultaba: el único control comparaba el nombre del rol.
+     *
+     * @param idRol identificador del rol; los valores <= 0 no existen.
+     * @return la lista "PERMISO,PERMISO"; cadena vacía si el rol no existe o no
+     *         tiene permisos declarados.
+     */
+    public String getPermisosDeRol(int idRol) {
+        if (idRol <= 0) {
+            return "";
+        }
+        String sql = "SELECT " + COLUMN_ROL_PERMISOS + " FROM " + TABLE_ROL
+                + " WHERE " + COLUMN_ROL_ID + " = ?";
+        try (Cursor cursor = getReadableDatabase().rawQuery(
+                sql, new String[]{String.valueOf(idRol)})) {
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                String permisos = cursor.getString(0);
+                return permisos != null ? permisos : "";
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Consulta parametrizada compartida: la columna es siempre una constante
+     * interna y el valor viaja como argumento de `?`, sin concatenar SQL.
+     */
+    private Usuario buscarUsuarioPor(String columna, String valor) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        String query = "SELECT u." + COLUMN_USUARIO_ID + ", u." + COLUMN_USUARIO_USERNAME + ", u."
+                + COLUMN_USUARIO_NOMBRE_COMPLETO + ", u." + COLUMN_USUARIO_PASSWORD_HASH + ", u."
+                + COLUMN_USUARIO_ID_ROL + ", u." + COLUMN_USUARIO_ACTIVO + ", r." + COLUMN_ROL_NOMBRE
+                + " FROM " + TABLE_USUARIO + " u INNER JOIN " + TABLE_ROL + " r ON u."
+                + COLUMN_USUARIO_ID_ROL + " = r." + COLUMN_ROL_ID
+                + " WHERE u." + columna + " = ?";
+
+        Cursor cursor = db.rawQuery(query, new String[]{valor});
+        Usuario usuario = null;
+        if (cursor.moveToFirst()) {
+            usuario = new Usuario();
+            usuario.setIdUsuario(cursor.getInt(0));
+            usuario.setUsername(cursor.getString(1));
+            usuario.setNombreCompleto(cursor.getString(2));
+            usuario.setPasswordHash(cursor.getString(3));
+            usuario.setIdRol(cursor.getInt(4));
+            usuario.setActivo(cursor.getInt(5));
+            usuario.setNombreRol(cursor.getString(6));
+        }
+        cursor.close();
+        return usuario;
+    }
+
+    /**
+     * Autentica al usuario verificando username y contraseña.
+     * Retorna el objeto Usuario si la contraseña coincide, o null.
+     *
+     * Si el hash guardado aún está en el formato heredado (SHA-256 sin sal) y
+     * la contraseña es correcta, la fila se reescribe con PBKDF2: migración
+     * transparente durante el login, sin duplicar la verificación en ningún
+     * otro lado.
+     */
+    public Usuario autenticar(String username, String rawPassword) {
+        Usuario usuario = getUsuarioByUsername(username);
+        if (usuario == null) {
+            return null; // Usuario no existe
+        }
+
+        String hashAlmacenado = usuario.getPasswordHash();
+        if (!PasswordUtils.verificar(rawPassword, hashAlmacenado)) {
+            return null; // Contraseña incorrecta
+        }
+
+        if (PasswordUtils.necesitaRehash(hashAlmacenado)) {
+            String hashNuevo = PasswordUtils.hashPassword(rawPassword);
+            ContentValues cv = new ContentValues();
+            cv.put(COLUMN_USUARIO_PASSWORD_HASH, hashNuevo);
+            this.getWritableDatabase().update(
+                    TABLE_USUARIO, cv,
+                    COLUMN_USUARIO_ID + " = ?",
+                    new String[]{String.valueOf(usuario.getIdUsuario())});
+            usuario.setPasswordHash(hashNuevo);
+        }
+
+        return usuario;
+    }
+
+    // --- ADMINISTRACIÓN DE ROLES (RF-27) ---
+
+    /** Hilo dedicado a las consultas reactivas de roles. */
+    private static final ExecutorService rolExecutor = Executors.newSingleThreadExecutor();
+
+    /** Cache LiveData del listado de roles; se llena solo en la primera suscripción. */
+    private MutableLiveData<List<Rol>> roles;
+
+    /**
+     * RF-27: consulta de roles que sigue siendo la que ejecuta el executor.
+     * La interfaz no debe llamarla en el hilo principal; para eso está
+     * {@link #observarRoles()}.
+     */
+    public List<Rol> getAllRoles() {
+        List<Rol> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT * FROM " + TABLE_ROL + " ORDER BY " + COLUMN_ROL_NOMBRE + " ASC", null);
+        if (cursor.moveToFirst()) {
+            do {
+                Rol rol = new Rol(
+                        cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_ROL_ID)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_ROL_NOMBRE)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_ROL_DESCRIPCION)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_ROL_PERMISOS))
+                );
+                list.add(rol);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public long insertRol(Rol rol) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_ROL_NOMBRE, rol.getNombreRol().trim());
+        cv.put(COLUMN_ROL_DESCRIPCION, rol.getDescripcion() != null ? rol.getDescripcion().trim() : "");
+        cv.put(COLUMN_ROL_PERMISOS, rol.getPermisos() != null ? rol.getPermisos().trim() : "");
+        return db.insert(TABLE_ROL, null, cv);
+    }
+
+    public boolean updateRol(Rol rol) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_ROL_NOMBRE, rol.getNombreRol().trim());
+        cv.put(COLUMN_ROL_DESCRIPCION, rol.getDescripcion() != null ? rol.getDescripcion().trim() : "");
+        cv.put(COLUMN_ROL_PERMISOS, rol.getPermisos() != null ? rol.getPermisos().trim() : "");
+        int rows = db.update(TABLE_ROL, cv, COLUMN_ROL_ID + " = ?", new String[]{String.valueOf(rol.getIdRol())});
+        return rows > 0;
+    }
+
+    public boolean deleteRol(int idRol) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        Cursor cursor = db.rawQuery("SELECT 1 FROM " + TABLE_USUARIO + " WHERE " + COLUMN_USUARIO_ID_ROL + " = ?", new String[]{String.valueOf(idRol)});
+        boolean inUse = cursor.getCount() > 0;
+        cursor.close();
+        if (inUse) {
+            return false;
+        }
+        int rows = db.delete(TABLE_ROL, COLUMN_ROL_ID + " = ?", new String[]{String.valueOf(idRol)});
+        return rows > 0;
+    }
+
+    public boolean isRoleNameExists(String nombreRol) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT 1 FROM " + TABLE_ROL + " WHERE " + COLUMN_ROL_NOMBRE + " = ? COLLATE NOCASE", new String[]{nombreRol.trim()});
+        boolean exists = cursor.getCount() > 0;
+        cursor.close();
+        return exists;
+    }
+
+    /**
+     * RF-27: expone el listado de roles como LiveData, con el mismo esquema que
+     * categorías, usuarios, productos y proveedores. La primera suscripción
+     * dispara la consulta en el hilo de E/S.
+     */
+    public LiveData<List<Rol>> observarRoles() {
+        if (roles == null) {
+            roles = new MutableLiveData<>();
+            refrescarRoles();
+        }
+        return roles;
+    }
+
+    /**
+     * Vuelve a consultar ROL y publica el resultado. Seguro de llamar desde el
+     * hilo principal (alta de un rol): el trabajo ocurre en el executor y la
+     * lista se actualiza sola en la interfaz.
+     */
+    public void refrescarRoles() {
+        final MutableLiveData<List<Rol>> destino = roles;
+        if (destino == null) {
+            return;
+        }
+        rolExecutor.execute(() -> destino.postValue(getAllRoles()));
+    }
+
+    // --- ADMINISTRACIÓN DE USUARIOS (RF-27) ---
+
+    public List<Usuario> getAllUsuarios() {
+        List<Usuario> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        String query = "SELECT u." + COLUMN_USUARIO_ID + ", u." + COLUMN_USUARIO_USERNAME + ", u."
+                + COLUMN_USUARIO_NOMBRE_COMPLETO + ", u." + COLUMN_USUARIO_PASSWORD_HASH + ", u."
+                + COLUMN_USUARIO_ID_ROL + ", u." + COLUMN_USUARIO_ACTIVO + ", r." + COLUMN_ROL_NOMBRE
+                + " FROM " + TABLE_USUARIO + " u INNER JOIN " + TABLE_ROL + " r ON u."
+                + COLUMN_USUARIO_ID_ROL + " = r." + COLUMN_ROL_ID
+                + " ORDER BY u." + COLUMN_USUARIO_ID + " DESC";
+
+        Cursor cursor = db.rawQuery(query, null);
+        if (cursor.moveToFirst()) {
+            do {
+                Usuario u = new Usuario();
+                u.setIdUsuario(cursor.getInt(0));
+                u.setUsername(cursor.getString(1));
+                u.setNombreCompleto(cursor.getString(2));
+                u.setPasswordHash(cursor.getString(3));
+                u.setIdRol(cursor.getInt(4));
+                u.setActivo(cursor.getInt(5));
+                u.setNombreRol(cursor.getString(6));
+                list.add(u);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public long insertUsuario(Usuario usuario, String rawPassword) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_USUARIO_USERNAME, usuario.getUsername().trim());
+        cv.put(COLUMN_USUARIO_NOMBRE_COMPLETO, usuario.getNombreCompleto().trim());
+        cv.put(COLUMN_USUARIO_PASSWORD_HASH, PasswordUtils.hashPassword(rawPassword));
+        cv.put(COLUMN_USUARIO_ID_ROL, usuario.getIdRol());
+        cv.put(COLUMN_USUARIO_ACTIVO, usuario.getActivo());
+        return db.insert(TABLE_USUARIO, null, cv);
+    }
+
+    public boolean updateUsuarioEstado(int idUsuario, int nuevoEstado) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_USUARIO_ACTIVO, nuevoEstado);
+        int rows = db.update(TABLE_USUARIO, cv, COLUMN_USUARIO_ID + " = ?", new String[]{String.valueOf(idUsuario)});
+        return rows > 0;
+    }
+
+    public boolean updateUsuario(Usuario usuario, String newPassword) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_USUARIO_USERNAME, usuario.getUsername().trim());
+        cv.put(COLUMN_USUARIO_NOMBRE_COMPLETO, usuario.getNombreCompleto().trim());
+        cv.put(COLUMN_USUARIO_ID_ROL, usuario.getIdRol());
+        cv.put(COLUMN_USUARIO_ACTIVO, usuario.getActivo());
+        if (newPassword != null && !newPassword.trim().isEmpty()) {
+            cv.put(COLUMN_USUARIO_PASSWORD_HASH, PasswordUtils.hashPassword(newPassword.trim()));
+        }
+        int rows = db.update(TABLE_USUARIO, cv, COLUMN_USUARIO_ID + " = ?", new String[]{String.valueOf(usuario.getIdUsuario())});
+        return rows > 0;
+    }
+
+    public boolean deleteUsuario(int idUsuario) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        int rows = db.delete(TABLE_USUARIO, COLUMN_USUARIO_ID + " = ?", new String[]{String.valueOf(idUsuario)});
+        return rows > 0;
+    }
+
+    public boolean isUsernameExists(String username) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT 1 FROM " + TABLE_USUARIO + " WHERE " + COLUMN_USUARIO_USERNAME + " = ? COLLATE NOCASE", new String[]{username.trim()});
+        boolean exists = cursor.getCount() > 0;
+        cursor.close();
+        return exists;
+    }
+
+    // --- MÓDULO DE CATEGORÍAS (CU-09 - Agregado para registro y validación de unicidad) ---
+
+    /**
+     * Corrige el nombre o la descripción de una categoría existente (CU-09).
+     *
+     * @return true solo si actualizó una fila. Falla si el nombre ya está en uso
+     *         por otra categoría: la columna es UNIQUE y una excepción acá
+     *         cerraría la app, así que se captura y se devuelve false.
+     */
+    public boolean actualizarCategoria(int idCategoria, String nombre, String descripcion) {
+        try {
+            SQLiteDatabase db = this.getWritableDatabase();
+            ContentValues cv = new ContentValues();
+            cv.put(COLUMN_CAT_NOMBRE, nombre);
+            cv.put(COLUMN_CAT_DESCRIPCION, descripcion);
+            return db.update(TABLE_CATEGORIA, cv, COLUMN_CAT_ID + " = ?",
+                    new String[]{String.valueOf(idCategoria)}) == 1;
+        } catch (SQLException e) {
+            Log.w(TAG, "no se pudo actualizar la categoria " + idCategoria, e);
+            return false;
+        }
+    }
+
+    /** Alta y baja lógica de una categoría: los productos que la usan no se tocan. */
+    public boolean actualizarEstadoCategoria(int idCategoria, int activo) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_CAT_ACTIVO, activo);
+        return db.update(TABLE_CATEGORIA, cv, COLUMN_CAT_ID + " = ?",
+                new String[]{String.valueOf(idCategoria)}) == 1;
+    }
+
+    /**
+     * Cantidad de administradores ACTIVOS distintos del usuario indicado.
+     * Un administrador es un usuario activo cuyo rol tiene el permiso USUARIOS.
+     */
+    public int contarAdminsActivos(int idExcluido) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        String sql = "SELECT COUNT(*) FROM " + TABLE_USUARIO + " u "
+                + "JOIN " + TABLE_ROL + " r ON u." + COLUMN_USUARIO_ID_ROL + " = r." + COLUMN_ROL_ID + " "
+                + "WHERE u." + COLUMN_USUARIO_ACTIVO + " = 1 "
+                + "AND u." + COLUMN_USUARIO_ID + " <> ? "
+                + "AND (',' || UPPER(r." + COLUMN_ROL_PERMISOS + ") || ',') LIKE '%,USUARIOS,%'";
+        try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(idExcluido)})) {
+            return c.moveToFirst() ? c.getInt(0) : 0;
+        }
+    }
+
+    /** true si el usuario está activo y su rol conserva el permiso USUARIOS. */
+    public boolean esAdminActivo(int idUsuario) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        String sql = "SELECT COUNT(*) FROM " + TABLE_USUARIO + " u "
+                + "JOIN " + TABLE_ROL + " r ON u." + COLUMN_USUARIO_ID_ROL + " = r." + COLUMN_ROL_ID + " "
+                + "WHERE u." + COLUMN_USUARIO_ID + " = ? AND u." + COLUMN_USUARIO_ACTIVO + " = 1 "
+                + "AND (',' || UPPER(r." + COLUMN_ROL_PERMISOS + ") || ',') LIKE '%,USUARIOS,%'";
+        try (Cursor c = db.rawQuery(sql, new String[]{String.valueOf(idUsuario)})) {
+            return c.moveToFirst() && c.getInt(0) > 0;
+        }
+    }
+
+    /** true si el rol tiene el permiso de administración de usuarios. */
+    public boolean esRolAdmin(int idRol) {
+        String permisos = getPermisosDeRol(idRol);
+        return Permisos.tiene(permisos, Permisos.USUARIOS);
+    }
+
+    public boolean isCategoriaExists(String nombreCategoria) {
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT 1 FROM " + TABLE_CATEGORIA + " WHERE " + COLUMN_CAT_NOMBRE + " = ? COLLATE NOCASE", new String[]{nombreCategoria.trim()});
+        boolean exists = cursor.getCount() > 0;
+        cursor.close();
+        return exists;
+    }
+
+    public long insertCategoria(String nombreCategoria, String descripcion) {
+        if (isCategoriaExists(nombreCategoria)) {
+            return -1; // Retorna -1 si el nombre de categoría ya existe (Cumple CU-09 Flujo Alternativo)
+        }
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues cv = new ContentValues();
+        cv.put(COLUMN_CAT_NOMBRE, nombreCategoria.trim());
+        cv.put(COLUMN_CAT_DESCRIPCION, descripcion != null ? descripcion.trim() : "");
+        cv.put(COLUMN_CAT_ACTIVO, 1);
+        return db.insert(TABLE_CATEGORIA, null, cv);
+    }
+
+    // --- CU-10: CONSULTAR Y SELECCIONAR CATEGORÍAS (RF-10) ---
+
+    /**
+     * CU-10 / RF-10: consulta de categorías activas.
+     * Filtra únicamente las categorías habilitadas y las ordena alfabéticamente.
+     * Las categorías deshabilitadas (activo = 0) nunca se exponen a la interfaz.
+     *
+     * @return lista de categorías activas, ordenada por nombre ascendente.
+     */
+    public List<Categoria> getCategoriasActivas() {
+        List<Categoria> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT " + COLUMN_CAT_ID + ", " + COLUMN_CAT_NOMBRE + ", " + COLUMN_CAT_DESCRIPCION + ", " + COLUMN_CAT_ACTIVO
+                        + " FROM " + TABLE_CATEGORIA
+                        + " WHERE " + COLUMN_CAT_ACTIVO + " = 1"
+                        + " ORDER BY " + COLUMN_CAT_NOMBRE + " ASC",
+                null);
+        if (cursor.moveToFirst()) {
+            do {
+                Categoria cat = new Categoria();
+                cat.setIdCategoria(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_CAT_ID)));
+                cat.setNombreCategoria(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CAT_NOMBRE)));
+                cat.setDescripcion(cursor.getString(cursor.getColumnIndexOrThrow(COLUMN_CAT_DESCRIPCION)));
+                cat.setActivo(cursor.getInt(cursor.getColumnIndexOrThrow(COLUMN_CAT_ACTIVO)));
+                list.add(cat);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    /**
+     * CU-10 / RF-10: expone las categorías activas de forma reactiva.
+     * La consulta se ejecuta fuera del hilo principal y el resultado se entrega
+     * como LiveData, tal como exige el caso de uso (StateFlow o LiveData).
+     * Devuelve siempre la misma instancia, de modo que la interfaz pueda
+     * suscribirse una sola vez y luego pedir actualizaciones con
+     * {@link #refrescarCategoriasActivas()} sin duplicar observers.
+     *
+     * @return LiveData con la lista de categorías activas.
+     */
+    public LiveData<List<Categoria>> observarCategoriasActivas() {
+        if (categoriasActivas == null) {
+            categoriasActivas = new MutableLiveData<>();
+            refrescarCategoriasActivas();
+        }
+        return categoriasActivas;
+    }
+
+    /**
+     * Vuelve a ejecutar el DAO de CU-10 y publica el resultado en el LiveData.
+     * Seguro de llamar desde el hilo principal: el trabajo ocurre en el executor.
+     */
+    public void refrescarCategoriasActivas() {
+        final MutableLiveData<List<Categoria>> destino = categoriasActivas;
+        if (destino == null) {
+            return;
+        }
+        categoriaExecutor.execute(() -> destino.postValue(getCategoriasActivas()));
+    }
+
+    // ---------------------------------------------------------------------
+    // USUARIOS (CU-27)
+    // ---------------------------------------------------------------------
+
+    /** Hilo dedicado a las consultas reactivas de usuarios. */
+    private static final ExecutorService usuarioExecutor = Executors.newSingleThreadExecutor();
+
+    /** Cache LiveData del listado; se llena solo en la primera suscripción. */
+    private MutableLiveData<List<Usuario>> usuarios;
+
+    /**
+     * CU-27: expone el listado de usuarios como LiveData. La primera
+     * suscripción dispara la consulta inicial en el hilo de E/S.
+     */
+    public LiveData<List<Usuario>> observarUsuarios() {
+        if (usuarios == null) {
+            usuarios = new MutableLiveData<>();
+            refrescarUsuarios();
+        }
+        return usuarios;
+    }
+
+    /**
+     * CU-27: vuelve a consultar la base y publica el resultado. El alta de un
+     * usuario debe llamar a este método para que la lista reactiva se
+     * actualice sola en la interfaz.
+     */
+    public void refrescarUsuarios() {
+        final MutableLiveData<List<Usuario>> destino = usuarios;
+        if (destino == null) {
+            return;
+        }
+        usuarioExecutor.execute(() -> destino.postValue(getAllUsuarios()));
+    }
+
+    // ---------------------------------------------------------------------
+    // PRODUCTOS (RF-04 / RF-05)
+    // ---------------------------------------------------------------------
+
+    /** Hilo dedicado a las consultas reactivas de productos. */
+    private static final ExecutorService productoExecutor = Executors.newSingleThreadExecutor();
+
+    /** Cache LiveData del catálogo; se llena solo en la primera suscripción. */
+    private MutableLiveData<List<Producto>> productos;
+
+    /** DAO de productos reutilizado por el camino reactivo; las consultas siguen en él. */
+    private final ProductoDao productoDaoReactivo = new ProductoDao(this);
+
+    /**
+     * RF-04 / RF-05: expone el catálogo como LiveData, filtrado por nombre o SKU
+     * (el mismo criterio del DAO). La primera suscripción ejecuta la consulta
+     * inicial en el hilo de E/S; después la interfaz cambia el filtro con
+     * {@link #refrescarProductos(String)} sobre esta misma instancia.
+     *
+     * @param filtro texto de nombre o SKU; null o vacío lista todo el catálogo.
+     * @return LiveData con el catálogo filtrado, siempre la misma instancia.
+     */
+    public LiveData<List<Producto>> observarProductos(String filtro) {
+        if (productos == null) {
+            productos = new MutableLiveData<>();
+            refrescarProductos(filtro);
+        }
+        return productos;
+    }
+
+    /**
+     * Vuelve a consultar PRODUCTO con el filtro de nombre o SKU y publica el
+     * resultado en el LiveData. Seguro de llamar desde el hilo principal (cada
+     * tecla del buscador): el trabajo ocurre en el executor, que serializa las
+     * consultas y deja en la interfaz el último resultado pedido.
+     */
+    public void refrescarProductos(String filtro) {
+        final MutableLiveData<List<Producto>> destino = productos;
+        if (destino == null) {
+            return;
+        }
+        final String texto = filtro;
+        productoExecutor.execute(() ->
+                destino.postValue(productoDaoReactivo.buscarProductos(texto)));
+    }
+
+    /** Cache LiveData de los productos deshabilitados (RF-08, baja lógica). */
+    private MutableLiveData<List<Producto>> productosInactivos;
+
+    /**
+     * RF-08: expone los productos con {@code activo = 0} como LiveData, con el
+     * mismo camino que el catálogo activo. El filtro por nombre o SKU lo aplica
+     * el DAO en SQL, no la interfaz en memoria.
+     *
+     * @param filtro texto de nombre o SKU; null o vacío lista todos los inactivos.
+     * @return LiveData con los productos deshabilitados, siempre la misma instancia.
+     */
+    public LiveData<List<Producto>> observarProductosInactivos(String filtro) {
+        if (productosInactivos == null) {
+            productosInactivos = new MutableLiveData<>();
+            refrescarProductosInactivos(filtro);
+        }
+        return productosInactivos;
+    }
+
+    /**
+     * Vuelve a consultar los productos deshabilitados. Igual que el catálogo
+     * activo, la consulta corre en el executor: la lista de inactivos no puede
+     * bloquear el hilo principal al abrir la pantalla ni al escribir en el
+     * buscador.
+     */
+    public void refrescarProductosInactivos(String filtro) {
+        final MutableLiveData<List<Producto>> destino = productosInactivos;
+        if (destino == null) {
+            return;
+        }
+        final String texto = filtro;
+        productoExecutor.execute(() ->
+                destino.postValue(productoDaoReactivo.buscarProductosInactivos(texto)));
+    }
+
+    // ---------------------------------------------------------------------
+    // PROVEEDORES (CU-11)
+    // ---------------------------------------------------------------------
+
+    /** Hilo dedicado a las consultas reactivas de proveedores. */
+    private static final ExecutorService proveedorExecutor = Executors.newSingleThreadExecutor();
+
+    /** Cache LiveData del listado; se llena solo en la primera suscripción. */
+    private MutableLiveData<List<Proveedor>> proveedores;
+
+    /** DAO de proveedores reutilizado por el camino reactivo; las consultas siguen en él. */
+    private final ProveedorDao proveedorDaoReactivo = new ProveedorDao(this);
+
+    /**
+     * CU-11: expone el listado de proveedores habilitados como LiveData, con el
+     * mismo esquema que categorías, usuarios y productos. La primera
+     * suscripción dispara la consulta en el hilo de E/S.
+     */
+    public LiveData<List<Proveedor>> observarProveedores() {
+        if (proveedores == null) {
+            proveedores = new MutableLiveData<>();
+            refrescarProveedores();
+        }
+        return proveedores;
+    }
+
+    /**
+     * Vuelve a consultar PROVEEDOR y publica el resultado. Seguro de llamar
+     * desde el hilo principal (alta, edición o baja lógica): el trabajo ocurre
+     * en el executor y la lista se actualiza sola en la interfaz.
+     */
+    public void refrescarProveedores() {
+        final MutableLiveData<List<Proveedor>> destino = proveedores;
+        if (destino == null) {
+            return;
+        }
+        proveedorExecutor.execute(() ->
+                destino.postValue(proveedorDaoReactivo.getAllProveedores()));
+    }
+}

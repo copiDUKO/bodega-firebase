@@ -1,0 +1,227 @@
+package com.android.sistemabodegaappandroid.ui.admin;
+
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.TextView;
+import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.fragment.app.Fragment;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.android.sistemabodegaappandroid.R;
+import com.android.sistemabodegaappandroid.db.DatabaseHelper;
+import com.android.sistemabodegaappandroid.session.SessionManager;
+import com.android.sistemabodegaappandroid.util.ReglasAdmin;
+import com.android.sistemabodegaappandroid.model.Rol;
+import com.android.sistemabodegaappandroid.ui.adapter.RolAdapter;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+
+import java.util.ArrayList;
+import java.util.List;
+import com.android.sistemabodegaappandroid.util.Permisos;
+
+public class RolesFragment extends Fragment {
+
+    private RecyclerView rvRoles;
+    private TextView tvEmptyRoles;
+    private FloatingActionButton fabAddRole;
+    private DatabaseHelper dbHelper;
+    private RolAdapter adapter;
+    private List<Rol> rolesList = new ArrayList<>();
+
+    @Nullable
+    @Override
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_roles, container, false);
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+
+        dbHelper = new DatabaseHelper(requireContext());
+
+        rvRoles = view.findViewById(R.id.rvRoles);
+        tvEmptyRoles = view.findViewById(R.id.tvEmptyRoles);
+        fabAddRole = view.findViewById(R.id.fabAddRole);
+
+        rvRoles.setLayoutManager(new LinearLayoutManager(requireContext()));
+        adapter = new RolAdapter(rolesList, new RolAdapter.OnRolActionListener() {
+            @Override
+            public void onEdit(Rol rol) {
+                showEditRoleDialog(rol);
+            }
+
+            @Override
+            public void onDelete(Rol rol) {
+                confirmDeleteRole(rol);
+            }
+        });
+        rvRoles.setAdapter(adapter);
+
+        fabAddRole.setOnClickListener(v -> showAddRoleDialog());
+
+        dbHelper.observarRoles().observe(getViewLifecycleOwner(), lista -> {
+            if (lista == null) {
+                return;
+            }
+            rolesList = lista;
+            if (rolesList.isEmpty()) {
+                tvEmptyRoles.setVisibility(View.VISIBLE);
+                rvRoles.setVisibility(View.GONE);
+            } else {
+                tvEmptyRoles.setVisibility(View.GONE);
+                rvRoles.setVisibility(View.VISIBLE);
+                adapter.updateData(rolesList);
+            }
+        });
+
+        loadRoles();
+    }
+
+    public void loadRoles() {
+        dbHelper.refrescarRoles();
+    }
+
+    private void showAddRoleDialog() {
+        abrirDialogoRol(null);
+    }
+
+    private void showEditRoleDialog(Rol rol) {
+        abrirDialogoRol(rol);
+    }
+
+    private void abrirDialogoRol(@Nullable Rol rolEditar) {
+        boolean esEdicion = rolEditar != null;
+
+        View dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_add_rol, null);
+        EditText etNombreRol = dialogView.findViewById(R.id.etNombreRol);
+        EditText etDescripcionRol = dialogView.findViewById(R.id.etDescripcionRol);
+        CheckBox cbUsuarios = dialogView.findViewById(R.id.cbPermisoUsuarios);
+        CheckBox cbProductos = dialogView.findViewById(R.id.cbPermisoProductos);
+        CheckBox cbCategorias = dialogView.findViewById(R.id.cbPermisoCategorias);
+        CheckBox cbProveedores = dialogView.findViewById(R.id.cbPermisoProveedores);
+        CheckBox cbMovimientos = dialogView.findViewById(R.id.cbPermisoMovimientos);
+        CheckBox cbInformes = dialogView.findViewById(R.id.cbPermisoInformes);
+
+        if (esEdicion) {
+            etNombreRol.setText(rolEditar.getNombreRol());
+            etDescripcionRol.setText(rolEditar.getDescripcion());
+            String p = rolEditar.getPermisos() != null ? rolEditar.getPermisos() : "";
+            // Token completo: "contains" daría por marcado un permiso que solo
+            // aparece como parte de otro nombre.
+            cbUsuarios.setChecked(Permisos.tiene(p, Permisos.USUARIOS));
+            cbProductos.setChecked(Permisos.tiene(p, Permisos.PRODUCTOS));
+            cbCategorias.setChecked(Permisos.tiene(p, Permisos.CATEGORIAS));
+            cbProveedores.setChecked(Permisos.tiene(p, Permisos.PROVEEDORES));
+            cbMovimientos.setChecked(Permisos.tiene(p, Permisos.MOVIMIENTOS));
+            cbInformes.setChecked(Permisos.tiene(p, Permisos.INFORMES));
+        } else {
+            cbProductos.setChecked(true);
+            cbCategorias.setChecked(true);
+        }
+
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle(esEdicion ? "Editar Rol" : getString(R.string.add_role))
+                .setView(dialogView)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    String nombreRol = etNombreRol.getText() != null ? etNombreRol.getText().toString().trim() : "";
+                    String descripcion = etDescripcionRol.getText() != null ? etDescripcionRol.getText().toString().trim() : "";
+
+                    if (TextUtils.isEmpty(nombreRol)) {
+                        Toast.makeText(requireContext(), "El nombre del rol es obligatorio", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    if (!esEdicion && dbHelper.isRoleNameExists(nombreRol)) {
+                        Toast.makeText(requireContext(), "El nombre del rol ya existe (debe ser único)", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    if (esEdicion && !nombreRol.equalsIgnoreCase(rolEditar.getNombreRol()) && dbHelper.isRoleNameExists(nombreRol)) {
+                        Toast.makeText(requireContext(), "El nombre del rol ya existe (debe ser único)", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+
+                    // El CSV se arma con Permisos.unir: cuando los tokens se
+                    // sumaban a mano acá, agregar un permiso nuevo (INFORMES)
+                    // hacia que editar un rol lo borrara sin avisar.
+                    String permisosStr = Permisos.unir(
+                            cbUsuarios.isChecked(),
+                            cbProductos.isChecked(),
+                            cbCategorias.isChecked(),
+                            cbProveedores.isChecked(),
+                            cbMovimientos.isChecked(),
+                            cbInformes.isChecked());
+
+                    if (esEdicion) {
+                        // El rol propio no puede quedarse sin el permiso de
+                        // usuarios: la app seguiría abierta pero el módulo de
+                        // administración dejaría de estar permitido.
+                        SessionManager sesion = new SessionManager(requireContext());
+                        boolean conservaUsuarios = Permisos.tiene(permisosStr, Permisos.USUARIOS);
+                        boolean quedanOtrosAdmins = dbHelper.contarAdminsActivos(sesion.getUserId()) > 0;
+                        if (!ReglasAdmin.puedeQuitarPermisoUsuarios(rolEditar.getIdRol(),
+                                sesion.getRoleId(), conservaUsuarios, quedanOtrosAdmins)) {
+                            Toast.makeText(requireContext(), R.string.msg_no_puedes_quitarte_usuarios,
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
+                        rolEditar.setNombreRol(nombreRol);
+                        rolEditar.setDescripcion(descripcion);
+                        rolEditar.setPermisos(permisosStr);
+                        boolean updated = dbHelper.updateRol(rolEditar);
+                        if (updated) {
+                            Toast.makeText(requireContext(), "Rol actualizado con éxito", Toast.LENGTH_SHORT).show();
+                            loadRoles();
+                        } else {
+                            Toast.makeText(requireContext(), "Error al actualizar el rol", Toast.LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Rol nuevoRol = new Rol(nombreRol, descripcion, permisosStr);
+                        long result = dbHelper.insertRol(nuevoRol);
+                        if (result != -1) {
+                            Toast.makeText(requireContext(), "Rol registrado con éxito", Toast.LENGTH_SHORT).show();
+                            loadRoles();
+                        } else {
+                            Toast.makeText(requireContext(), "Error al registrar el rol", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void confirmDeleteRole(Rol rol) {
+        SessionManager sesionRol = new SessionManager(requireContext());
+        if (!ReglasAdmin.puedeEliminarRol(rol.getIdRol(), sesionRol.getRoleId())) {
+            Toast.makeText(requireContext(), R.string.msg_no_puedes_borrar_tu_rol,
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Eliminar Rol")
+                .setMessage("¿Estás seguro de que deseas eliminar el rol \"" + rol.getNombreRol() + "\"?")
+                .setPositiveButton("Eliminar", (dialog, which) -> {
+                    boolean deleted = dbHelper.deleteRol(rol.getIdRol());
+                    if (deleted) {
+                        Toast.makeText(requireContext(), "Rol eliminado con éxito", Toast.LENGTH_SHORT).show();
+                        loadRoles();
+                    } else {
+                        Toast.makeText(requireContext(), "No se puede eliminar el rol porque está asignado a uno o más usuarios", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+}
